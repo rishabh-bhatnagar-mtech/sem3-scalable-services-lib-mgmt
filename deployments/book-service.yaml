@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: book-postgres-pvc
+  namespace: library-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: book-postgres
+  namespace: library-system
+spec:
+  selector:
+    matchLabels:
+      app: book-postgres
+  serviceName: book-postgres
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: book-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: bookdb
+        - name: POSTGRES_USER
+          value: bookuser
+        - name: POSTGRES_PASSWORD
+          value: bookpass123
+        volumeMounts:
+        - name: book-postgres-storage
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: book-postgres-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: book-postgres
+  namespace: library-system
+spec:
+  ports:
+  - port: 5432
+  clusterIP: None
+  selector:
+    app: book-postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: book-service
+  namespace: library-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: book-service
+  template:
+    metadata:
+      labels:
+        app: book-service
+    spec:
+      containers:
+      - name: book-service
+        image: book-service:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_HOST
+          value: book-postgres.library-system.svc.cluster.local
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          value: bookuser
+        - name: DB_PASSWORD
+          value: bookpass123
+        - name: DB_NAME
+          value: bookdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: book-service
+  namespace: library-system
+spec:
+  selector:
+    app: book-service
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000
+  type: ClusterIP
+
